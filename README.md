@@ -25,6 +25,8 @@ Python-based reconnaissance automation framework for bug bounty hunting and web 
 git clone https://github.com/tejassroot/recon-automation-tool.git
 cd recon-automation-tool
 chmod +x recon
+sudo cp recon /usr/local/bin/recon
+
 ```
 
 ## Usage
