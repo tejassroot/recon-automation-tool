@@ -1,0 +1,273 @@
+#!/usr/bin/env python3
+
+import subprocess
+import argparse
+import os
+from pathlib import Path
+
+BANNER = r'''
+██████╗ ███████╗ ██████╗ ██████╗ ███╗   ██╗
+██╔══██╗██╔════╝██╔════╝██╔═══██╗████╗  ██║
+██████╔╝█████╗  ██║     ██║   ██║██╔██╗ ██║
+██╔══██╗██╔══╝  ██║     ██║   ██║██║╚██╗██║
+██║  ██║███████╗╚██████╗╚██████╔╝██║ ╚████║
+╚═╝  ╚═╝╚══════╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝
+'''
+
+TOOLS = [
+    "subfinder",
+    "httpx",
+    "katana",
+    "waybackurls",
+    "gau",
+]
+
+def check_tools():
+    print("\n[+] Checking required tools...\n")
+
+    missing = []
+
+    for tool in TOOLS:
+        result = subprocess.run(
+            ["which", tool],
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode == 0:
+            print(f"[OK] {tool} -> {result.stdout.strip()}")
+        else:
+            print(f"[MISSING] {tool}")
+            missing.append(tool)
+
+    if missing:
+        print("\n[-] Install missing tools first.")
+        exit(1)
+
+
+def run_command(command, output_file=None):
+    print(f"\n[+] Running:\n{command}\n")
+
+    process = subprocess.Popen(
+        command,
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True
+    )
+
+    output = []
+
+    for line in process.stdout:
+        print(line, end="")
+        output.append(line)
+
+    process.wait()
+
+    if process.returncode != 0:
+        print(f"\n[-] Command failed:\n{command}\n")
+
+    if output_file:
+        with open(output_file, "w") as f:
+            f.writelines(output)
+
+        print(f"\n[+] Saved -> {output_file}")
+
+
+def create_directories(base_dir):
+    dirs = [
+        "subdomains",
+        "live_hosts",
+        "urls",
+        "crawl",
+        "js",
+        "interesting"
+    ]
+
+    for d in dirs:
+        Path(os.path.join(base_dir, d)).mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
+
+def subdomain_enum(domain, base_dir):
+    output = os.path.join(
+        base_dir,
+        "subdomains",
+        "subs.txt"
+    )
+
+    cmd = f"subfinder -d {domain} -silent"
+
+    run_command(cmd, output)
+
+
+def probe_live_hosts(base_dir):
+    subs = os.path.join(
+        base_dir,
+        "subdomains",
+        "subs.txt"
+    )
+
+    output = os.path.join(
+        base_dir,
+        "live_hosts",
+        "live.txt"
+    )
+
+    cmd = f"cat {subs} | httpx -silent"
+
+    run_command(cmd, output)
+
+
+def collect_urls(domain, base_dir):
+    output = os.path.join(
+        base_dir,
+        "urls",
+        "all_urls.txt"
+    )
+
+    cmd = (
+        f"(echo {domain} | waybackurls; "
+        f"gau {domain}) | sort -u"
+    )
+
+    run_command(cmd, output)
+
+
+def crawl_urls(base_dir):
+    live = os.path.join(
+        base_dir,
+        "live_hosts",
+        "live.txt"
+    )
+
+    output = os.path.join(
+        base_dir,
+        "crawl",
+        "katana.txt"
+    )
+
+    cmd = f"cat {live} | katana -jc -silent"
+
+    run_command(cmd, output)
+
+
+def extract_js_files(base_dir):
+    urls = os.path.join(
+        base_dir,
+        "urls",
+        "all_urls.txt"
+    )
+
+    output = os.path.join(
+        base_dir,
+        "js",
+        "js_files.txt"
+    )
+
+    cmd = (
+        f"cat {urls} | "
+        f"grep -Ei '\\.js($|\\?)' | "
+        f"sort -u"
+    )
+
+    run_command(cmd, output)
+
+
+def extract_interesting(base_dir):
+    urls = os.path.join(
+        base_dir,
+        "urls",
+        "all_urls.txt"
+    )
+
+    xss_output = os.path.join(
+        base_dir,
+        "interesting",
+        "xss.txt"
+    )
+
+    sqli_output = os.path.join(
+        base_dir,
+        "interesting",
+        "sqli.txt"
+    )
+
+    redirect_output = os.path.join(
+        base_dir,
+        "interesting",
+        "redirect.txt"
+    )
+
+    xss_cmd = (
+        f"grep '=' {urls} 2>/dev/null | "
+        f"grep -Ei "
+        f"'q=|search=|query=|callback=|return=|url='"
+    )
+
+    sqli_cmd = (
+        f"grep '=' {urls} 2>/dev/null | "
+        f"grep -Ei "
+        f"'id=|uid=|user=|item=|cat='"
+    )
+
+    redirect_cmd = (
+        f"grep '=' {urls} 2>/dev/null | "
+        f"grep -Ei "
+        f"'redirect=|next=|url=|return='"
+    )
+
+    run_command(xss_cmd, xss_output)
+    run_command(sqli_cmd, sqli_output)
+    run_command(redirect_cmd, redirect_output)
+
+
+def main():
+    print(BANNER)
+
+    parser = argparse.ArgumentParser(
+        description="Bug Bounty Recon Automation"
+    )
+
+    parser.add_argument(
+        "-d",
+        "--domain",
+        required=True,
+        help="Target domain"
+    )
+
+    args = parser.parse_args()
+
+    domain = args.domain
+
+    base_dir = os.path.join(
+        os.getcwd(),
+        domain
+    )
+
+    create_directories(base_dir)
+
+    check_tools()
+
+    print(f"\n[+] Starting recon for: {domain}\n")
+
+    subdomain_enum(domain, base_dir)
+
+    probe_live_hosts(base_dir)
+
+    collect_urls(domain, base_dir)
+
+    crawl_urls(base_dir)
+
+    extract_js_files(base_dir)
+
+    extract_interesting(base_dir)
+
+    print("\n[+] Recon completed successfully")
+    print(f"[+] Results stored in: {base_dir}")
+
+
+if __name__ == "__main__":
+    main()
