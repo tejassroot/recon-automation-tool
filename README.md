@@ -1,6 +1,6 @@
 # Recon Automation Tool
 
-Automated reconnaissance tool for bug bounty hunting.
+Python-based reconnaissance automation framework for bug bounty hunting and web application security testing.
 
 ## Features
 - Subdomain Enumeration
