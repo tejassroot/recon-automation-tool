@@ -1,0 +1,11 @@
+## Dependencies
+
+Install the following tools before running:
+
+- subfinder
+- httpx
+- katana
+- gau
+- waybackurls
+
+The script automatically checks whether these tools are installed.
